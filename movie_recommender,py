@@ -1,0 +1,60 @@
+import pandas as pd
+import ast
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Load CSV files
+movies = pd.read_csv('tmdb_5000_movies.csv')
+credits = pd.read_csv('tmdb_5000_credits.csv')
+
+# Merge both datasets on title
+movies = movies.merge(credits, on='title')
+
+# Functions to extract director and top 3 cast
+def get_director(crew):
+    for member in ast.literal_eval(crew):
+        if member['job'] == 'Director':
+            return member['name']
+    return ''
+
+def get_top_cast(cast):
+    cast_members = ast.literal_eval(cast)
+    return ' '.join([actor['name'] for actor in cast_members[:3]])
+
+def clean_genres(genres):
+    genre_list = ast.literal_eval(genres)
+    return ' '.join([g['name'] for g in genre_list])
+
+# Apply functions
+movies['director'] = movies['crew'].apply(get_director)
+movies['cast_3'] = movies['cast'].apply(get_top_cast)
+movies['genres'] = movies['genres'].apply(clean_genres)
+movies['overview'] = movies['overview'].fillna('')
+
+# Create final content column
+movies['content'] = movies['overview'] + ' ' + movies['genres'] + ' ' + movies['cast_3'] + ' ' + movies['director']
+
+# TF-IDF Vectorization
+tfidf = TfidfVectorizer(stop_words='english')
+tfidf_matrix = tfidf.fit_transform(movies['content'])
+
+# Cosine Similarity
+similarity = cosine_similarity(tfidf_matrix)
+
+# Recommendation Function
+def recommend(title):
+    try:
+        idx = movies[movies['title'] == title].index[0]
+    except IndexError:
+        return ["Movie not found in dataset."]
+    
+    scores = list(enumerate(similarity[idx]))
+    sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:6]
+    recommendations = [movies.iloc[i[0]].title for i in sorted_scores]
+    return recommendations
+
+# Try it
+movie_name = input("Enter a movie name: ")
+print(f"\nMovies similar to '{movie_name}':\n")
+for m in recommend(movie_name):
+    print("- ", m)
